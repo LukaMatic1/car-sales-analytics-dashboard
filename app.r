@@ -4,6 +4,7 @@ library(dplyr)
 library(ggplot2)
 library(lubridate)
 library(plotly)
+library(scales)
 
 # -------------------------
 # LOAD DATA
@@ -57,22 +58,22 @@ ui <- page_sidebar(
     )
   ),
   
+  layout_column_wrap(
+    width = 1/3,
+    value_box("Total Sales", textOutput("total_sales"), showcase = icon("car")),
+    value_box("Total Revenue", textOutput("total_revenue"), showcase = icon("dollar-sign")),
+    value_box("Avg Price", textOutput("avg_price"), showcase = icon("chart-line"))
+  ),
+  
   card(
     card_header("Sales & Revenue Trend"),
     plotlyOutput("trend_plot", height = "400px")
   )
   
   # -------------------------
-  # Still disabled — add back one at a time after filters are confirmed working
+  # Still disabled — add back one at a time after KPIs are confirmed working
   # -------------------------
   
-  # layout_column_wrap(
-  #   width = 1/3,
-  #   value_box("Total Sales", textOutput("total_sales"), showcase = icon("car")),
-  #   value_box("Total Revenue", textOutput("total_revenue"), showcase = icon("dollar-sign")),
-  #   value_box("Avg Price", textOutput("avg_price"), showcase = icon("chart-line"))
-  # ),
-  #
   # navset_tab(
   #   nav_panel("Market Analysis", ... ),
   #   nav_panel("Pricing", ... ),
@@ -121,6 +122,19 @@ server <- function(input, output, session) {
     df
   })
   
+  # KPI value boxes — react to the same filtered() data as the chart
+  output$total_sales <- renderText({
+    comma(nrow(filtered()))
+  })
+  
+  output$total_revenue <- renderText({
+    dollar(sum(filtered()$Sale.Price), scale = 1e-6, suffix = "M")
+  })
+  
+  output$avg_price <- renderText({
+    dollar(mean(filtered()$Sale.Price))
+  })
+  
   # Aggregate the filtered data by day (same as yesterday's confirmed-working version)
   trend_df <- reactive({
     df <- filtered() %>%
@@ -153,9 +167,6 @@ server <- function(input, output, session) {
   # Still disabled — bring back one at a time
   # -------------------------
   
-  # output$total_sales <- renderText({ ... })
-  # output$total_revenue <- renderText({ ... })
-  # output$avg_price <- renderText({ ... })
   # output$make_plot <- renderPlotly({ ... })
   # output$model_plot <- renderPlotly({ ... })
   # output$price_hist <- renderPlotly({ ... })
