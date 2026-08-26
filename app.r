@@ -81,13 +81,26 @@ ui <- page_sidebar(
                 sliderInput("top_n", "Show top N:", min = 5, max = 50, value = 15, step = 5),
                 plotlyOutput("salesperson_plot", height = "500px")
               )
+    ),
+    
+    nav_panel("Market Analysis",
+              layout_columns(
+                card(
+                  card_header("Car Make Distribution"),
+                  plotlyOutput("make_plot", height = "450px")
+                ),
+                card(
+                  card_header("Car Model Distribution"),
+                  sliderInput("top_n_models", "Show top N models:", min = 5, max = 40, value = 15, step = 5),
+                  plotlyOutput("model_plot", height = "450px")
+                )
+              )
     )
     
     # -------------------------
     # Still disabled — add back one at a time
     # -------------------------
     
-    # nav_panel("Market Analysis", ... ),
     # nav_panel("Pricing", ... ),
     # nav_panel("Data Explorer", DTOutput("table"))
   )
@@ -215,11 +228,55 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)
   })
   
+  # Market Analysis — Car Make distribution (all makes, typically a small set)
+  output$make_plot <- renderPlotly({
+    
+    df <- filtered() %>%
+      group_by(Car.Make) %>%
+      summarise(Sales = n(), Revenue = sum(Sale.Price), .groups = "drop") %>%
+      arrange(desc(Sales))
+    
+    p <- ggplot(df, aes(x = reorder(Car.Make, Sales), y = Sales)) +
+      geom_col(fill = "steelblue") +
+      coord_flip() +
+      labs(title = "Sales by Car Make", x = NULL, y = "Cars Sold") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
+  # Debounce the model slider the same way as the salesperson one
+  top_n_models_debounced <- debounce(reactive(input$top_n_models), 250)
+  
+  # Heavy step: aggregate + sort ALL models — only re-runs when filters change
+  model_summary <- reactive({
+    filtered() %>%
+      group_by(Car.Model) %>%
+      summarise(Sales = n(), Revenue = sum(Sale.Price), .groups = "drop") %>%
+      arrange(desc(Sales))
+  })
+  
+  # Cheap step: slice top N from the already-sorted summary
+  output$model_plot <- renderPlotly({
+    
+    n <- top_n_models_debounced()
+    df <- model_summary() %>% slice_head(n = n)
+    
+    p <- ggplot(df, aes(x = reorder(Car.Model, Sales), y = Sales)) +
+      geom_col(fill = "darkgreen") +
+      coord_flip() +
+      labs(title = paste("Top", n, "Models by Sales"), x = NULL, y = "Cars Sold") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
   # -------------------------
   # Still disabled — bring back one at a time
   # -------------------------
   
-  # output$model_plot <- renderPlotly({ ... })
   # output$price_hist <- renderPlotly({ ... })
   # output$price_commission <- renderPlotly({ ... })
   # output$table <- renderDT({ ... })
