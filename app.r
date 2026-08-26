@@ -10,49 +10,62 @@ library(plotly)
 # -------------------------
 cars <- read.csv("car_sales_data.csv")
 
-# Sanity checks — run these once in the console, not in the app,
-# to confirm column names / types match what the rest of the code expects
-str(cars)
-head(cars)
-names(cars)
-
 # NOTE: read.csv() auto-converts spaces in header names to dots.
 # "Sale Price" -> Sale.Price, "Car Make" -> Car.Make, "Car Model" -> Car.Model,
-# "Commission Rate" -> Commission.Rate, etc. Confirm exact names via names(cars).
+# "Commission Rate" -> Commission.Rate, etc.
 
 cars$Date <- as.Date(cars$Date)
+cars$Sale.Price <- as.numeric(cars$Sale.Price)  # guard against 32-bit int overflow on sum()
 cars$Year  <- year(cars$Date)
 cars$Month <- month(cars$Date, label = TRUE)
 
+# Precompute filter choices once at startup
+make_choices <- sort(unique(cars$Car.Make))
+model_choices <- sort(unique(cars$Car.Model))
+salesperson_choices <- sort(unique(cars$Salesperson))
+
+date_min <- min(cars$Date)
+date_max <- max(cars$Date)
+price_min <- min(cars$Sale.Price)
+price_max <- max(cars$Sale.Price)
+
 # -------------------------
-# UI — minimal, responsive
+# UI — sidebar filters added, one plot for now
 # -------------------------
-ui <- page_fluid(
+ui <- page_sidebar(
+  title = "Car Sales — Minimal Test",
   theme = bs_theme(version = 5, bootswatch = "flatly"),
   
-  titlePanel("Car Sales — Minimal Test"),
+  sidebar = sidebar(
+    actionButton("reset_filters", "Reset Filters", icon = icon("rotate-left")),
+    tags$br(), tags$br(),
+    
+    selectInput("make", "Car Make:", choices = make_choices, multiple = TRUE),
+    selectInput("model", "Car Model:", choices = model_choices, multiple = TRUE),
+    selectizeInput("salesperson", "Salesperson:", choices = NULL, multiple = TRUE),
+    
+    dateRangeInput(
+      "date", "Date Range:",
+      min = date_min, max = date_max,
+      start = date_min, end = date_max
+    ),
+    
+    sliderInput(
+      "price", "Price Range:",
+      min = price_min, max = price_max,
+      value = c(price_min, price_max)
+    )
+  ),
   
   card(
     card_header("Sales & Revenue Trend"),
-    plotOutput("trend_plot_static", height = "400px"),   # <- diagnostic: plain ggplot first
-    plotlyOutput("trend_plot", height = "400px")          # <- plotly version, compare after
+    plotlyOutput("trend_plot", height = "400px")
   )
   
   # -------------------------
-  # Everything below is disabled for now — uncomment once
-  # the minimal version above is confirmed working
+  # Still disabled — add back one at a time after filters are confirmed working
   # -------------------------
   
-  # sidebar = sidebar(
-  #   selectInput("make", "Car Make:", unique(cars$`Car Make`), multiple = TRUE),
-  #   selectInput("model", "Car Model:", unique(cars$`Car Model`), multiple = TRUE),
-  #   selectInput("salesperson", "Salesperson:", unique(cars$Salesperson), multiple = TRUE),
-  #   dateRangeInput("date", "Date Range:", min = min(cars$Date), max = max(cars$Date),
-  #                  start = min(cars$Date), end = max(cars$Date)),
-  #   sliderInput("price", "Price Range:", min = min(cars$`Sale Price`), max = max(cars$`Sale Price`),
-  #               value = c(min(cars$`Sale Price`), max(cars$`Sale Price`)))
-  # ),
-  #
   # layout_column_wrap(
   #   width = 1/3,
   #   value_box("Total Sales", textOutput("total_sales"), showcase = icon("car")),
@@ -69,13 +82,48 @@ ui <- page_fluid(
 )
 
 # -------------------------
-# SERVER — minimal
+# SERVER
 # -------------------------
 server <- function(input, output, session) {
   
-  # DIAGNOSTIC: pre-compute the aggregated df once, print info to console
+  # Populate salesperson choices server-side — avoids sending a huge
+  # option list to the browser upfront, which can crash rendering
+  updateSelectizeInput(session, "salesperson", choices = salesperson_choices, server = TRUE)
+  
+  # Reset all filters back to defaults when the button is clicked
+  observeEvent(input$reset_filters, {
+    updateSelectInput(session, "make", selected = character(0))
+    updateSelectInput(session, "model", selected = character(0))
+    updateSelectizeInput(session, "salesperson", selected = character(0), server = TRUE)
+    updateDateRangeInput(session, "date", start = date_min, end = date_max)
+    updateSliderInput(session, "price", value = c(price_min, price_max))
+  })
+  
+  # Filtered raw data — filters apply per-transaction
+  filtered <- reactive({
+    df <- cars
+    
+    if (!is.null(input$make) && length(input$make) > 0)
+      df <- df %>% filter(Car.Make %in% input$make)
+    
+    if (!is.null(input$model) && length(input$model) > 0)
+      df <- df %>% filter(Car.Model %in% input$model)
+    
+    if (!is.null(input$salesperson) && length(input$salesperson) > 0)
+      df <- df %>% filter(Salesperson %in% input$salesperson)
+    
+    df <- df %>%
+      filter(
+        Date >= input$date[1], Date <= input$date[2],
+        Sale.Price >= input$price[1], Sale.Price <= input$price[2]
+      )
+    
+    df
+  })
+  
+  # Aggregate the filtered data by day (same as yesterday's confirmed-working version)
   trend_df <- reactive({
-    df <- cars %>%
+    df <- filtered() %>%
       group_by(Date) %>%
       summarise(
         Sales = n(),
@@ -84,21 +132,8 @@ server <- function(input, output, session) {
       )
     
     cat("trend_df rows:", nrow(df), "\n")
-    cat("NA dates:", sum(is.na(df$Date)), "\n")
-    cat("NA revenue:", sum(is.na(df$Revenue)), "\n")
     
     df
-  })
-  
-  # DIAGNOSTIC: plain static ggplot — if this renders but plotly below doesn't,
-  # the problem is in ggplotly()/htmlwidgets, not the data
-  output$trend_plot_static <- renderPlot({
-    df <- trend_df()
-    
-    ggplot(df, aes(Date, Revenue)) +
-      geom_line(color = "steelblue") +
-      labs(title = "Revenue Over Time (static)", x = "Date", y = "Revenue") +
-      theme_minimal()
   })
   
   output$trend_plot <- renderPlotly({
@@ -115,11 +150,9 @@ server <- function(input, output, session) {
   })
   
   # -------------------------
-  # Everything else disabled — bring back one output at a time
-  # once you confirm the above renders correctly
+  # Still disabled — bring back one at a time
   # -------------------------
   
-  # filtered <- reactive({ ... })
   # output$total_sales <- renderText({ ... })
   # output$total_revenue <- renderText({ ... })
   # output$avg_price <- renderText({ ... })
