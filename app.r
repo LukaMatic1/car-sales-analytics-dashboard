@@ -181,23 +181,33 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)  # responsive to container width
   })
   
-  # Sales Performance — top N salespeople by revenue, respects sidebar filters
-  output$salesperson_plot <- renderPlotly({
-    
-    df <- filtered() %>%
+  # Debounce the slider so dragging doesn't trigger a re-render on every pixel
+  top_n_debounced <- debounce(reactive(input$top_n), 250)
+  
+  # Heavy step: aggregate + sort ALL salespeople — only re-runs when filters change,
+  # NOT when the top_n slider moves
+  salesperson_summary <- reactive({
+    filtered() %>%
       group_by(Salesperson) %>%
       summarise(
         Revenue = sum(Sale.Price),
         Sales = n(),
         .groups = "drop"
       ) %>%
-      arrange(desc(Revenue)) %>%
-      slice_head(n = input$top_n)
+      arrange(desc(Revenue))
+  })
+  
+  # Cheap step: just slice the top N from the already-sorted summary —
+  # this is what re-runs when the slider moves, and it's fast
+  output$salesperson_plot <- renderPlotly({
+    
+    n <- top_n_debounced()
+    df <- salesperson_summary() %>% slice_head(n = n)
     
     p <- ggplot(df, aes(x = reorder(Salesperson, Revenue), y = Revenue)) +
       geom_col(fill = "purple") +
       coord_flip() +
-      labs(title = paste("Top", input$top_n, "Salespeople by Revenue"),
+      labs(title = paste("Top", n, "Salespeople by Revenue"),
            x = NULL, y = "Revenue") +
       theme_minimal()
     
