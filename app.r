@@ -67,6 +67,8 @@ ui <- page_sidebar(
   
   card(
     card_header("Sales & Revenue Trend"),
+    radioButtons("metric", NULL, choices = c("Revenue", "Cars Sold"),
+                 selected = "Revenue", inline = TRUE),
     plotlyOutput("trend_plot", height = "400px")
   )
   
@@ -154,10 +156,17 @@ server <- function(input, output, session) {
     
     df <- trend_df()
     
-    p <- ggplot(df, aes(Date, Revenue)) +
-      geom_line(color = "steelblue") +
-      labs(title = "Revenue Over Time", x = "Date", y = "Revenue") +
-      theme_minimal()
+    if (input$metric == "Revenue") {
+      p <- ggplot(df, aes(Date, Revenue)) +
+        geom_line(color = "steelblue") +
+        labs(title = "Revenue Over Time", x = "Date", y = "Revenue") +
+        theme_minimal()
+    } else {
+      p <- ggplot(df, aes(Date, Sales)) +
+        geom_line(color = "darkorange") +
+        labs(title = "Cars Sold Over Time", x = "Date", y = "Cars Sold") +
+        theme_minimal()
+    }
     
     ggplotly(p) %>%
       layout(autosize = TRUE)  # responsive to container width
