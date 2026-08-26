@@ -94,6 +94,24 @@ ui <- page_sidebar(
                   sliderInput("top_n_models", "Show top N models:", min = 5, max = 40, value = 15, step = 5),
                   plotlyOutput("model_plot", height = "450px")
                 )
+              ),
+              
+              card(
+                card_header("Sales Trend by Make (monthly)"),
+                plotlyOutput("make_trend_plot", height = "450px")
+              )
+    ),
+    
+    nav_panel("Pricing",
+              layout_columns(
+                card(
+                  card_header("Price Distribution"),
+                  plotlyOutput("price_hist", height = "450px")
+                ),
+                card(
+                  card_header("Price vs Commission"),
+                  plotlyOutput("price_commission", height = "450px")
+                )
               )
     )
     
@@ -101,7 +119,6 @@ ui <- page_sidebar(
     # Still disabled — add back one at a time
     # -------------------------
     
-    # nav_panel("Pricing", ... ),
     # nav_panel("Data Explorer", DTOutput("table"))
   )
 )
@@ -119,7 +136,8 @@ server <- function(input, output, session) {
   observeEvent(input$reset_filters, {
     updateSelectInput(session, "make", selected = character(0))
     updateSelectInput(session, "model", selected = character(0))
-    updateSelectizeInput(session, "salesperson", selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "salesperson", selected = character(0),
+                         choices = salesperson_choices, server = TRUE)
     updateDateRangeInput(session, "date", start = date_min, end = date_max)
     updateSliderInput(session, "price", value = c(price_min, price_max))
   })
@@ -273,12 +291,60 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)
   })
   
+  # Sales trend by make, aggregated monthly — one line per make
+  make_trend_df <- reactive({
+    filtered() %>%
+      mutate(MonthStart = floor_date(Date, "month")) %>%
+      group_by(MonthStart, Car.Make) %>%
+      summarise(Sales = n(), .groups = "drop")
+  })
+  
+  output$make_trend_plot <- renderPlotly({
+    df <- make_trend_df()
+    
+    p <- ggplot(df, aes(MonthStart, Sales, color = Car.Make)) +
+      geom_line() +
+      geom_point(size = 1) +
+      labs(title = "Cars Sold per Month by Make", x = "Month", y = "Cars Sold", color = "Make") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
+  # Pricing — histogram of sale prices
+  output$price_hist <- renderPlotly({
+    p <- ggplot(filtered(), aes(Sale.Price)) +
+      geom_histogram(bins = 40, fill = "orange", color = "white") +
+      labs(title = "Distribution of Sale Prices", x = "Sale Price", y = "Count") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
+  # Pricing — price vs commission scatter. With up to 2.5M filtered rows,
+  # plotting every point would be slow and unreadable, so we sample.
+  output$price_commission <- renderPlotly({
+    df <- filtered()
+    
+    if (nrow(df) > 5000) {
+      df <- df %>% slice_sample(n = 5000)
+    }
+    
+    p <- ggplot(df, aes(Sale.Price, Commission.Earned)) +
+      geom_point(alpha = 0.4, color = "steelblue") +
+      labs(title = "Price vs Commission Earned (sampled)", x = "Sale Price", y = "Commission Earned") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
   # -------------------------
   # Still disabled — bring back one at a time
   # -------------------------
   
-  # output$price_hist <- renderPlotly({ ... })
-  # output$price_commission <- renderPlotly({ ... })
   # output$table <- renderDT({ ... })
 }
 
