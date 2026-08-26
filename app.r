@@ -58,30 +58,39 @@ ui <- page_sidebar(
     )
   ),
   
-  layout_column_wrap(
-    width = 1/3,
-    value_box("Total Sales", textOutput("total_sales"), showcase = icon("car")),
-    value_box("Total Revenue", textOutput("total_revenue"), showcase = icon("dollar-sign")),
-    value_box("Avg Price", textOutput("avg_price"), showcase = icon("chart-line"))
-  ),
-  
-  card(
-    card_header("Sales & Revenue Trend"),
-    radioButtons("metric", NULL, choices = c("Revenue", "Cars Sold"),
-                 selected = "Revenue", inline = TRUE),
-    plotlyOutput("trend_plot", height = "400px")
+  navset_tab(
+    nav_panel("Overview",
+              layout_column_wrap(
+                width = 1/3,
+                value_box("Total Sales", textOutput("total_sales"), showcase = icon("car")),
+                value_box("Total Revenue", textOutput("total_revenue"), showcase = icon("dollar-sign")),
+                value_box("Avg Price", textOutput("avg_price"), showcase = icon("chart-line"))
+              ),
+              
+              card(
+                card_header("Sales & Revenue Trend"),
+                radioButtons("metric", NULL, choices = c("Revenue", "Cars Sold"),
+                             selected = "Revenue", inline = TRUE),
+                plotlyOutput("trend_plot", height = "400px")
+              )
+    ),
+    
+    nav_panel("Sales Performance",
+              card(
+                card_header("Top Salespeople by Revenue"),
+                sliderInput("top_n", "Show top N:", min = 5, max = 50, value = 15, step = 5),
+                plotlyOutput("salesperson_plot", height = "500px")
+              )
+    )
+    
+    # -------------------------
+    # Still disabled — add back one at a time
+    # -------------------------
+    
+    # nav_panel("Market Analysis", ... ),
+    # nav_panel("Pricing", ... ),
+    # nav_panel("Data Explorer", DTOutput("table"))
   )
-  
-  # -------------------------
-  # Still disabled — add back one at a time after KPIs are confirmed working
-  # -------------------------
-  
-  # navset_tab(
-  #   nav_panel("Market Analysis", ... ),
-  #   nav_panel("Pricing", ... ),
-  #   nav_panel("Sales Performance", ... ),
-  #   nav_panel("Data Explorer", DTOutput("table"))
-  # )
 )
 
 # -------------------------
@@ -172,15 +181,37 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)  # responsive to container width
   })
   
+  # Sales Performance — top N salespeople by revenue, respects sidebar filters
+  output$salesperson_plot <- renderPlotly({
+    
+    df <- filtered() %>%
+      group_by(Salesperson) %>%
+      summarise(
+        Revenue = sum(Sale.Price),
+        Sales = n(),
+        .groups = "drop"
+      ) %>%
+      arrange(desc(Revenue)) %>%
+      slice_head(n = input$top_n)
+    
+    p <- ggplot(df, aes(x = reorder(Salesperson, Revenue), y = Revenue)) +
+      geom_col(fill = "purple") +
+      coord_flip() +
+      labs(title = paste("Top", input$top_n, "Salespeople by Revenue"),
+           x = NULL, y = "Revenue") +
+      theme_minimal()
+    
+    ggplotly(p) %>%
+      layout(autosize = TRUE)
+  })
+  
   # -------------------------
   # Still disabled — bring back one at a time
   # -------------------------
   
-  # output$make_plot <- renderPlotly({ ... })
   # output$model_plot <- renderPlotly({ ... })
   # output$price_hist <- renderPlotly({ ... })
   # output$price_commission <- renderPlotly({ ... })
-  # output$salesperson_plot <- renderPlotly({ ... })
   # output$table <- renderDT({ ... })
 }
 
