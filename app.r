@@ -5,6 +5,7 @@ library(ggplot2)
 library(lubridate)
 library(plotly)
 library(scales)
+library(DT)
 
 # -------------------------
 # LOAD DATA
@@ -17,13 +18,16 @@ cars <- read.csv("car_sales_data.csv")
 
 cars$Date <- as.Date(cars$Date)
 cars$Sale.Price <- as.numeric(cars$Sale.Price)  # guard against 32-bit int overflow on sum()
-cars$Year  <- year(cars$Date)
-cars$Month <- month(cars$Date, label = TRUE)
+
+# Factors speed up group_by()/summarise() on repeated categorical grouping
+cars$Car.Make <- as.factor(cars$Car.Make)
+cars$Car.Model <- as.factor(cars$Car.Model)
+cars$Salesperson <- as.factor(cars$Salesperson)
 
 # Precompute filter choices once at startup
-make_choices <- sort(unique(cars$Car.Make))
-model_choices <- sort(unique(cars$Car.Model))
-salesperson_choices <- sort(unique(cars$Salesperson))
+make_choices <- sort(as.character(unique(cars$Car.Make)))
+model_choices <- sort(as.character(unique(cars$Car.Model)))
+salesperson_choices <- sort(as.character(unique(cars$Salesperson)))
 
 date_min <- min(cars$Date)
 date_max <- max(cars$Date)
@@ -113,13 +117,15 @@ ui <- page_sidebar(
                   plotlyOutput("price_commission", height = "450px")
                 )
               )
+    ),
+    
+    nav_panel("Data Explorer",
+              card(
+                card_header("Filtered Data"),
+                textOutput("table_note"),
+                DTOutput("table")
+              )
     )
-    
-    # -------------------------
-    # Still disabled — add back one at a time
-    # -------------------------
-    
-    # nav_panel("Data Explorer", DTOutput("table"))
   )
 )
 
@@ -143,8 +149,19 @@ server <- function(input, output, session) {
   })
   
   # Filtered raw data — filters apply per-transaction
+  # Debounce the price slider — it fires continuously while dragging, and
+  # every chart in the app depends on filtered(), so this avoids a burst
+  # of full recomputations mid-drag
+  price_debounced <- debounce(reactive(input$price), 250)
+  
   filtered <- reactive({
-    df <- cars
+    price_range <- price_debounced()
+    
+    df <- cars %>%
+      filter(
+        Date >= input$date[1], Date <= input$date[2],
+        Sale.Price >= price_range[1], Sale.Price <= price_range[2]
+      )
     
     if (!is.null(input$make) && length(input$make) > 0)
       df <- df %>% filter(Car.Make %in% input$make)
@@ -154,12 +171,6 @@ server <- function(input, output, session) {
     
     if (!is.null(input$salesperson) && length(input$salesperson) > 0)
       df <- df %>% filter(Salesperson %in% input$salesperson)
-    
-    df <- df %>%
-      filter(
-        Date >= input$date[1], Date <= input$date[2],
-        Sale.Price >= input$price[1], Sale.Price <= input$price[2]
-      )
     
     df
   })
@@ -179,17 +190,13 @@ server <- function(input, output, session) {
   
   # Aggregate the filtered data by day (same as yesterday's confirmed-working version)
   trend_df <- reactive({
-    df <- filtered() %>%
+    filtered() %>%
       group_by(Date) %>%
       summarise(
         Sales = n(),
         Revenue = sum(Sale.Price),
         .groups = "drop"
       )
-    
-    cat("trend_df rows:", nrow(df), "\n")
-    
-    df
   })
   
   output$trend_plot <- renderPlotly({
@@ -341,11 +348,26 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)
   })
   
-  # -------------------------
-  # Still disabled — bring back one at a time
-  # -------------------------
+  # Data Explorer — cap displayed rows since filtered data can still be huge (up to 2.5M)
+  TABLE_ROW_CAP <- 5000
   
-  # output$table <- renderDT({ ... })
+  output$table_note <- renderText({
+    n <- nrow(filtered())
+    if (n > TABLE_ROW_CAP) {
+      paste0("Showing first ", comma(TABLE_ROW_CAP), " of ", comma(n),
+             " matching rows. Narrow your filters to see a different slice.")
+    } else {
+      paste0("Showing all ", comma(n), " matching rows.")
+    }
+  })
+  
+  output$table <- renderDT({
+    df <- filtered()
+    if (nrow(df) > TABLE_ROW_CAP) {
+      df <- df %>% slice_head(n = TABLE_ROW_CAP)
+    }
+    datatable(df, options = list(pageLength = 10), filter = "top")
+  })
 }
 
 shinyApp(ui, server)
