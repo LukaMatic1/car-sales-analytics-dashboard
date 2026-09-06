@@ -56,6 +56,57 @@ ui <- page_sidebar(
   title = tagList(icon("car-side"), "Car Sales Analytics"),
   theme = bs_theme(version = 5, bootswatch = "flatly"),
 
+  tags$head(
+    tags$style(HTML("
+      /* Tab labels: dark neutral text instead of the theme's accent green,
+         with the accent reserved for just the active tab's underline */
+      .nav-tabs .nav-link {
+        color: #2c3e50;
+        font-weight: 500;
+        border: none;
+        border-bottom: 3px solid transparent;
+      }
+      .nav-tabs .nav-link.active {
+        color: #2c3e50;
+        font-weight: 700;
+        background: transparent;
+        border-bottom: 3px solid #18BC9C;
+      }
+      .nav-tabs .nav-link:hover {
+        color: #18BC9C;
+        border-bottom: 3px solid #d0d0d0;
+      }
+
+      /* Card headers: subtle, consistent, no shouting */
+      .card-header {
+        font-weight: 600;
+        color: #2c3e50;
+        background-color: #f8f9fa;
+      }
+
+      /* Sidebar section labels */
+      h6.text-muted {
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        margin-top: 0.5rem;
+      }
+
+      /* Slightly tighter, cleaner value boxes */
+      .bslib-value-box .value-box-title {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+      }
+
+      /* App title bar */
+      .navbar-brand, .bslib-page-title {
+        font-weight: 700;
+      }
+    "))
+  ),
+
   sidebar = sidebar(
     actionButton("reset_filters", "Reset Filters", icon = icon("rotate-left"),
                  class = "btn-outline-secondary w-100"),
