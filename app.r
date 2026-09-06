@@ -95,7 +95,6 @@ ui <- page_sidebar(
                 ),
                 card(
                   card_header("Car Model Distribution"),
-                  sliderInput("top_n_models", "Show top N models:", min = 5, max = 40, value = 15, step = 5),
                   plotlyOutput("model_plot", height = "450px")
                 )
               ),
@@ -271,27 +270,18 @@ server <- function(input, output, session) {
       layout(autosize = TRUE)
   })
   
-  # Debounce the model slider the same way as the salesperson one
-  top_n_models_debounced <- debounce(reactive(input$top_n_models), 250)
-  
-  # Heavy step: aggregate + sort ALL models — only re-runs when filters change
-  model_summary <- reactive({
-    filtered() %>%
+  # Car Model distribution — small fixed set (5 models), no need for a top-N slider
+  output$model_plot <- renderPlotly({
+    
+    df <- filtered() %>%
       group_by(Car.Model) %>%
       summarise(Sales = n(), Revenue = sum(Sale.Price), .groups = "drop") %>%
       arrange(desc(Sales))
-  })
-  
-  # Cheap step: slice top N from the already-sorted summary
-  output$model_plot <- renderPlotly({
-    
-    n <- top_n_models_debounced()
-    df <- model_summary() %>% slice_head(n = n)
     
     p <- ggplot(df, aes(x = reorder(Car.Model, Sales), y = Sales)) +
       geom_col(fill = "darkgreen") +
       coord_flip() +
-      labs(title = paste("Top", n, "Models by Sales"), x = NULL, y = "Cars Sold") +
+      labs(title = "Sales by Car Model", x = NULL, y = "Cars Sold") +
       theme_minimal()
     
     ggplotly(p) %>%
