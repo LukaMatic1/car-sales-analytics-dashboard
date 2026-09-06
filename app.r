@@ -350,7 +350,7 @@ server <- function(input, output, session) {
       arrange(desc(Sales))
 
     p <- ggplot(df, aes(x = reorder(Car.Model, Sales), y = Sales)) +
-      geom_col(fill = "#27AE60") +
+      geom_col(fill = "#95A5A6") +
       coord_flip() +
       labs(title = "Sales by Car Model", x = NULL, y = "Cars Sold") +
       theme_app
